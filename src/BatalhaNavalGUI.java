@@ -1,5 +1,6 @@
 import javax.swing.*;
 import java.awt.*;
+import java.util.Random;
 
 public class BatalhaNavalGUI {
 
@@ -66,10 +67,55 @@ public class BatalhaNavalGUI {
         dialog.setVisible(true); // bloqueia ate o jogador terminar de posicionar tudo
     }
 
+    // NOVO: posiciona a frota automaticamente em posicoes aleatorias
+    static void posicionarFrotaAleatoria(char[][] tab, int TAM, int[] navios) {
+        Random rnd = new Random();
+        for (int tam : navios) {
+            boolean posicionado = false;
+            while (!posicionado) {
+                boolean horizontal = rnd.nextBoolean();
+                int lin = rnd.nextInt(TAM);
+                int col = rnd.nextInt(TAM);
+
+                boolean cabe = true;
+                for (int k = 0; k < tam; k++) {
+                    int l = horizontal ? lin : lin + k;
+                    int c = horizontal ? col + k : col;
+                    if (l < 0 || l >= TAM || c < 0 || c >= TAM || tab[l][c] == 'N') cabe = false;
+                }
+                if (cabe) {
+                    for (int k = 0; k < tam; k++) {
+                        int l = horizontal ? lin : lin + k;
+                        int c = horizontal ? col + k : col;
+                        tab[l][c] = 'N';
+                    }
+                    posicionado = true;
+                }
+            }
+        }
+    }
+
+    // NOVO: pergunta ao jogador se ele quer posicionar manualmente ou sortear a frota
+    static void definirFrota(char[][] tab, int jogador, int TAM, int[] navios) {
+        int escolha = JOptionPane.showConfirmDialog(null,
+                "Jogador " + jogador + ", deseja posicionar seus navios manualmente?\n" +
+                        "(Sim = manual, Nao = sortear automaticamente)",
+                "Posicionamento da frota",
+                JOptionPane.YES_NO_OPTION);
+
+        if (escolha == JOptionPane.YES_OPTION) {
+            posicionarFrota(tab, jogador, TAM, navios);
+        } else {
+            posicionarFrotaAleatoria(tab, TAM, navios);
+            JOptionPane.showMessageDialog(null, "Frota do Jogador " + jogador + " sorteada automaticamente!");
+        }
+    }
+
     public static void main(String[] args) {
         int TAM = 10;
         int[] navios = {4, 3, 2}; // tamanhos dos navios da frota
         int totalNavio = navios[0] + navios[1] + navios[2];
+        int MAX_TENTATIVAS = 20; // NOVO: limite de tiros por jogador
 
         char[][] tab1 = new char[TAM][TAM];     // navios do Jogador 1
         char[][] tab2 = new char[TAM][TAM];     // navios do Jogador 2
@@ -85,23 +131,26 @@ public class BatalhaNavalGUI {
             }
         }
 
-        // ---------- Jogadores posicionam seus navios (clicando no proprio tabuleiro) ----------
+        // ---------- Jogadores posicionam seus navios (manual ou aleatorio) ----------
         JOptionPane.showMessageDialog(null, "Jogador 1, posicione sua frota.");
-        posicionarFrota(tab1, 1, TAM, navios);
+        definirFrota(tab1, 1, TAM, navios);
 
         JOptionPane.showMessageDialog(null, "Passe o computador para o Jogador 2.");
-        posicionarFrota(tab2, 2, TAM, navios);
+        definirFrota(tab2, 2, TAM, navios);
 
-        JOptionPane.showMessageDialog(null, "Frotas posicionadas! Jogador 1 ataca primeiro.");
+        JOptionPane.showMessageDialog(null, "Frotas posicionadas! Jogador 1 ataca primeiro.\n" +
+                "Cada jogador tem no maximo " + MAX_TENTATIVAS + " tentativas.");
 
         // ---------- Estado do jogo ----------
         int[] turno = {1};       // de quem e a vez (1 ou 2)
         int[] acertos1 = {0};    // acertos do Jogador 1 na frota do Jogador 2
         int[] acertos2 = {0};    // acertos do Jogador 2 na frota do Jogador 1
+        int[] tentativas1 = {0}; // NOVO: tiros dados pelo Jogador 1
+        int[] tentativas2 = {0}; // NOVO: tiros dados pelo Jogador 2
 
         // ---------- Monta a janela do jogo ----------
         JFrame janela = new JFrame("Batalha Naval - 2 Jogadores");
-        JLabel status = new JLabel("Vez do Jogador 1 - atire na frota do Jogador 2", SwingConstants.CENTER);
+        JLabel status = new JLabel("Vez do Jogador 1 - atire na frota do Jogador 2 (tentativa 1/" + MAX_TENTATIVAS + ")", SwingConstants.CENTER);
         JPanel grade = new JPanel(new GridLayout(TAM, TAM));
         JButton[][] botoes = new JButton[TAM][TAM];
 
@@ -127,6 +176,10 @@ public class BatalhaNavalGUI {
                         botao.setText("🌊");
                         botao.setBackground(Color.BLUE);
                     }
+
+                    // NOVO: conta a tentativa usada nesta jogada
+                    if (turno[0] == 1) tentativas1[0]++; else tentativas2[0]++;
+
                     JOptionPane.showMessageDialog(janela, acertou ? "Acertou um navio!" : "Tiro na agua!");
 
                     int acertosAtual = (turno[0] == 1) ? acertos1[0] : acertos2[0];
@@ -137,9 +190,22 @@ public class BatalhaNavalGUI {
                         return;
                     }
 
+                    // NOVO: verifica se o jogador atual esgotou suas tentativas
+                    int tentativasAtual = (turno[0] == 1) ? tentativas1[0] : tentativas2[0];
+                    if (tentativasAtual >= MAX_TENTATIVAS) {
+                        JOptionPane.showMessageDialog(janela,
+                                "Jogador " + turno[0] + " atingiu o numero maximo de tentativas (" + MAX_TENTATIVAS + ")!\n" +
+                                        "Fim de jogo.");
+                        for (JButton[] linhaBotoes : botoes)
+                            for (JButton b : linhaBotoes) b.setEnabled(false);
+                        return;
+                    }
+
                     // Troca o turno e redesenha o tabuleiro com os tiros do proximo jogador
                     turno[0] = (turno[0] == 1) ? 2 : 1;
-                    status.setText("Vez do Jogador " + turno[0] + " - atire na frota do Jogador " + (turno[0] == 1 ? 2 : 1));
+                    int proximaTentativa = ((turno[0] == 1) ? tentativas1[0] : tentativas2[0]) + 1;
+                    status.setText("Vez do Jogador " + turno[0] + " - atire na frota do Jogador " + (turno[0] == 1 ? 2 : 1) +
+                            " (tentativa " + proximaTentativa + "/" + MAX_TENTATIVAS + ")");
                     JOptionPane.showMessageDialog(janela, "Passe o computador para o Jogador " + turno[0]);
 
                     char[][] novoAtaque = (turno[0] == 1) ? ataque1 : ataque2;
